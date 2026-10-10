@@ -2,7 +2,7 @@
 
 Panel de diagnóstico OBD-II local basado en ESP32 y adaptador ELM327 Bluetooth. Esta entrega remasteriza la interfaz web de la versión funcional 0.7.0-dell; conserva la lógica C++, parsers, handlers HTTP y configuración descritos en la documentación del firmware.
 
-[![Página del proyecto](https://img.shields.io/badge/WEB-DCESP32-00a9e8?style=for-the-badge)](https://dcg0.github.io/DCesp32/)
+[![Página del proyecto](https://img.shields.io/badge/WEB-DCESP32-00a9e8?style=for-the-badge)](https://dcg0.github.io/DC-laboratory/dcesp32.html)
 [![Validación](https://github.com/dcg0/DCesp32/actions/workflows/validation.yml/badge.svg)](https://github.com/dcg0/DCesp32/actions/workflows/validation.yml)
 [![CodeQL](https://github.com/dcg0/DCesp32/actions/workflows/codeql.yml/badge.svg)](https://github.com/dcg0/DCesp32/actions/workflows/codeql.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/dcg0/DCesp32/badge)](https://scorecard.dev/viewer/?uri=github.com/dcg0/DCesp32)
@@ -13,7 +13,7 @@ Panel de diagnóstico OBD-II local basado en ESP32 y adaptador ELM327 Bluetooth.
 
 ## Página del proyecto
 
-La página pública de presentación está en [dcg0.github.io/DCesp32](https://dcg0.github.io/DCesp32/). El código fuente de la página es [`index.html`](index.html); el workflow de GitHub Pages publica solo el sitio y documentación seleccionada, no copia el firmware al artefacto web.
+La página pública está en [DC Laboratory · DCESP32](https://dcg0.github.io/DC-laboratory/dcesp32.html). Su fuente canónica es [`index.html`](index.html) en este repositorio. Se publica dentro del sitio existente de DC Laboratory, y la tarjeta de ese laboratorio enlaza directamente a la página.
 
 ## Qué incluye
 
@@ -54,9 +54,9 @@ El ZIP original señala que el proyecto base `ESP32-OBD2-Gauge` de VaAndCob tien
 
 ```text
 .
-├── index.html                         # Página de presentación
+├── index.html                         # Página fuente del proyecto
 ├── SECURITY.md                        # Política de seguridad
-├── .github/workflows/                 # Validación, CodeQL, Scorecard y Pages
+├── .github/workflows/                 # Validación, CodeQL y Scorecard
 └── trabajo-0.7.0-remaster/
     ├── ESP32-OBDC2/                   # Sketch y headers
     ├── herramientas/                  # Compilación, carga y pruebas
