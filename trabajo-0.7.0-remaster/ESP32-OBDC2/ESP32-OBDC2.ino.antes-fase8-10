@@ -1,0 +1,170 @@
+// ESP32-OBDC2 · Fases 3 y 4 · WiFi propio "DC-OBD" -> http://192.168.4.1
+// Basado en ESP32-OBD2-Gauge de VaAndCob (MIT No Commercial Use)
+// Placa: ESP32 Dev Module · Core ESP32 2.0.17 · sin librerías externas
+
+#define FW_VERSION "0.6.0-dell"
+#include <WiFi.h>
+#include <WebServer.h>
+#include <math.h>
+#include "dc_data.h"
+#include "dc_cfg.h"
+#include "dc_obd.h"
+#include "dc_parsers.h"
+#include "dc_dtc.h"
+#include "dc_vin.h"
+#include "dc_alert.h"
+#include "dc_parser_tests.h"
+#include "dc_logos.h"
+
+//#define SIMULATOR   // descomenta para probar la web sin ELM327
+
+WebServer server(80);
+
+const char PAGINA[] PROGMEM = R"HTML(<!DOCTYPE html><html><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><title>DCESP32-OBDC2</title>
+<style>body{margin:auto;padding:10px;background:#0a0a12;color:#eee;font-family:sans-serif;max-width:520px}
+#hd{display:flex;gap:6px;height:84px;margin-bottom:10px}
+#lg{height:84px;width:84px;border-radius:50%;object-fit:cover}
+#bn{flex:1;min-width:0;height:84px;object-fit:cover;border-radius:12px}
+#st{text-align:center;padding:10px;border-radius:8px;background:#822;margin-bottom:10px;font-size:17px}
+#st.ok{background:linear-gradient(#12873f,#0b5a2c)}
+#g{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.c{background:#1a1a2e;border-radius:14px;padding:10px}.c small{color:#889;font-size:13px}
+.c b{display:block;font-size:28px;color:#12e6f0}.c.w b{color:#f33}
+.d{margin-top:8px;background:#1a1a2e;border-radius:14px;padding:10px}
+footer{margin-top:14px;text-align:center;font-size:13px;color:#889;line-height:1.5}
+footer span{display:block;margin-top:6px;font-size:10px;color:#556}#al div{padding:10px;border-radius:10px;margin-bottom:6px;font-size:16px;font-weight:bold}
+#al .a1{background:#a60}#al .a2{background:#b11}#al button{margin-bottom:8px}
+label{display:inline-block;font-size:13px;color:#aab;margin:3px}
+input,select,button{font-size:15px;margin:3px}
+</style></head><body>
+<div id=hd><img id=lg src=/logo.webp?v2 alt=DCESP32><img id=bn src=/portada.webp?v2 alt=DCESP32-OBDC2></div>
+<div id=al></div><div id=st>...</div><div id=g></div>
+<div class=d><button onclick="leerDtc()">Leer fallas</button> <button onclick="leerVin()">Leer VIN</button> <button onclick="borrarDtc()">Borrar fallas</button><pre id=diag>Sin diagnóstico</pre></div>
+<div class=d><button onclick="cfgAbrir()">Configuración</button><div id=cfgp></div></div>
+<footer>DCESP32-OBDC2 de DC-tuner Studio creado por DC-LABORATORY<br>Basado en ESP32-OBD2-Gauge de VaAndCob (MIT No Commercial Use)</footer>
+<script>
+const E=["Desconectado","Conectando…","Inicializando…","Conectado","Sin respuesta del auto"];let cfg=[];
+function $(i){return document.getElementById(i)}
+async function init(){cfg=await(await fetch('/cfg')).json();
+$('g').innerHTML=cfg.map(p=>`<div class=c id=c_${p.id}><small>${p.n}</small><b>--</b><small>${p.u}</small></div>`).join('');tick()}
+async function tick(){try{const j=await(await fetch('/data')).json();
+$('st').textContent=E[j.bt]+' · '+j.pps+' pid/s · ELM327';$('st').className=j.bt==3?'ok':'';
+cfg.forEach(p=>{const v=j.d[p.id],c=$('c_'+p.id);const r=cv(p,v);c.querySelector('b').textContent=r[0];c.querySelectorAll('small')[1].textContent=r[1];
+c.className='c'+(v!=null&&p.w>0&&v>=p.w?' w':'')})}
+catch(e){$('st').textContent='Sin enlace con el ESP32';$('st').className=''}setTimeout(tick,400)}
+async function leerDtc(){await fetch('/dtc/leer',{method:'POST'});setTimeout(async()=>{$('diag').textContent=JSON.stringify(await (await fetch('/dtc')).json(),null,2)},500)}
+async function leerVin(){await fetch('/vehiculo/leer',{method:'POST'});setTimeout(async()=>{$('diag').textContent=JSON.stringify(await (await fetch('/vehiculo')).json(),null,2)},800)}
+async function borrarDtc(){if(!confirm('ADVERTENCIA: apaga la MIL y reinicia monitores de preparación. Se recomienda motor apagado y contacto ON. ¿Confirmas BORRAR?'))return;const r=await fetch('/dtc/borrar',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'confirmar=BORRAR'});$('diag').textContent=await r.text()}
+let U={uv:0,ut:0,up:0},ocultoKey='',prevKey='';
+function cv(p,v){if(v==null)return['--',p.u];const k=p.u;
+if(k=='km/h'&&U.uv)return[(v*0.621371).toFixed(0),'mph'];
+if(k=='°C'&&U.ut)return[(v*9/5+32).toFixed(1),'°F'];
+if(k=='kPa'&&U.up)return[(v*0.145038).toFixed(1),'psi'];
+return[v,k]}
+async function cargaU(){try{U=await(await fetch('/config')).json()}catch(e){}}
+function beep(){try{const a=new(window.AudioContext||window.webkitAudioContext)(),o=a.createOscillator();o.frequency.value=880;o.connect(a.destination);o.start();setTimeout(()=>{o.stop();a.close()},250)}catch(e){}}
+function silenciar(){ocultoKey=prevKey;$('al').innerHTML=''}
+async function alertas(){try{const j=await(await fetch('/alertas')).json();
+const key=j.a.map(x=>x.id+x.nv).join(',');
+if(!j.a.length){$('al').innerHTML='';prevKey='';ocultoKey=''}
+else{if(key!=prevKey){prevKey=key;ocultoKey='';try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(e){}beep()}
+if(key!=ocultoKey)$('al').innerHTML=j.a.map(x=>{const p=x.p&&cfg.find(c=>c.id==x.p);const r=(p&&x.v!=null)?' · '+cv(p,x.v).join(' '):'';return'<div class="a'+x.nv+'">'+x.n+' '+x.t+r+'</div>'}).join('')+'<button onclick="silenciar()">Entendido</button>'}
+}catch(e){}setTimeout(alertas,1000)}
+async function cfgAbrir(){const c=await(await fetch('/config')).json();U=c;
+let h='<small>Umbrales de alerta (0 = sin alerta). Unidades base: km/h, °C, kPa</small><br>';
+cfg.forEach(p=>{h+='<label>'+p.n+' <input id=w_'+p.id+' type=number step=any value="'+c.warn[p.id]+'" style="width:80px"></label>'});
+h+='<br><label>Voltaje bajo (V) <input id=cvb type=number step=any value="'+c.vb+'" style="width:80px"></label>'
++'<br><label>Velocidad <select id=cuv><option value=0>km/h<option value=1>mph</select></label>'
++'<label>Temp <select id=cut><option value=0>°C<option value=1>°F</select></label>'
++'<label>Presión <select id=cup><option value=0>kPa<option value=1>psi</select></label>'
++'<br><label>Adaptador BT <input id=cad value="'+c.ad+'" maxlength=23></label>'
++'<br><label>WiFi <input id=css value="'+c.ssid+'" maxlength=32></label><label>Clave <input id=cpw type=password placeholder="(sin cambios)" maxlength=32></label>'
++'<br><button onclick="cfgGuardar()">Guardar</button><button onclick="cfgReset()">Restablecer</button><button onclick="reiniciar()">Reiniciar ESP32</button><pre id=cmsg></pre>';
+$('cfgp').innerHTML=h;$('cuv').value=c.uv;$('cut').value=c.ut;$('cup').value=c.up}
+async function cfgGuardar(){const b=new URLSearchParams();cfg.forEach(p=>b.set('w_'+p.id,$('w_'+p.id).value));
+b.set('vb',$('cvb').value);b.set('uv',$('cuv').value);b.set('ut',$('cut').value);b.set('up',$('cup').value);b.set('ad',$('cad').value);b.set('ss',$('css').value);
+if($('cpw').value)b.set('pw',$('cpw').value);
+const r=await fetch('/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:b.toString()});
+$('cmsg').textContent=await r.text();await cargaU();try{cfg=await(await fetch('/cfg')).json()}catch(e){}}
+async function cfgReset(){if(!confirm('¿Restablecer TODA la configuración a valores de fábrica?'))return;
+const r=await fetch('/config/reset',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'confirmar=RESTABLECER'});
+$('cmsg').textContent=await r.text();await cargaU();try{cfg=await(await fetch('/cfg')).json()}catch(e){}}
+async function reiniciar(){if(!confirm('¿Reiniciar el ESP32? Se perderá la conexión unos segundos.'))return;try{await fetch('/reiniciar',{method:'POST'})}catch(e){}}
+cargaU();alertas();init();</script></body></html>)HTML";
+
+#ifdef SIMULATOR
+static const float simRango[NPIDS][2] = {
+  {800, 4500}, {0, 120}, {0, 80}, {15, 85}, {80, 102}, {30, 240}, {2, 40},
+  {20, 45}, {13.5, 14.5}, {-8, 8}, {-5, 5}, {20, 80}, {85, 105}
+};
+static void dcSim() {
+  static uint32_t t = 0;
+  if (millis() - t < 250) return;
+  t = millis();
+  float s = millis() / 1000.0f;
+  for (uint8_t i = 0; i < NPIDS; i++) {
+    float mid = (simRango[i][0] + simRango[i][1]) / 2, amp = (simRango[i][1] - simRango[i][0]) / 2;
+    DCPids[i].valor = mid + amp * sinf(s / (2.0f + i));
+    DCPids[i].valido = true; DCPids[i].soportado = true; DCPids[i].ts = millis();
+  }
+  dcBt = BT_LISTO; dcPps = 12;
+}
+#endif
+
+void setup() {
+  Serial.begin(115200);
+  dcCfgBegin();
+  WiFi.softAP(dcCfgSsid, dcCfgPass);
+  Serial.print("Web: http://"); Serial.println(WiFi.softAPIP());
+  server.on("/", []() { server.send_P(200, "text/html", PAGINA); });
+  server.on("/logo.webp", []() { server.sendHeader("Cache-Control", "max-age=86400"); server.send_P(200, "image/webp", (PGM_P)logo_web_data, logo_web_len); });
+  server.on("/portada.webp", []() { server.sendHeader("Cache-Control", "max-age=86400"); server.send_P(200, "image/webp", (PGM_P)portada_web_data, portada_web_len); });
+  server.on("/data", []() { server.send(200, "application/json", dcJson()); });
+  server.on("/status", []() { server.send(200, "application/json", dcStatusJson()); });
+  server.on("/cfg", []() { server.send(200, "application/json", dcCfgJson()); });
+  server.on("/dtc", HTTP_GET, []() { server.send(200, "application/json", dcDtcJson()); });
+  server.on("/dtc/leer", HTTP_POST, []() { dcDtcIniciar(); server.send(202, "application/json", "{\"aceptado\":true}"); });
+  server.on("/dtc/borrar", HTTP_POST, []() { String body=server.arg("plain"); if(!dcDtcBorrar(body)){server.send(400,"application/json","{\"error\":\"confirmacion requerida: confirmar=BORRAR\"}");return;} server.send(202,"application/json","{\"aceptado\":true}"); });
+  server.on("/vehiculo", HTTP_GET, []() { server.send(200, "application/json", dcVehiculoJson()); });
+  server.on("/vehiculo/leer", HTTP_POST, []() { dcVinIniciar(); server.send(202, "application/json", "{\"aceptado\":true}"); });
+  // --- Fase 14 (configuración) y Fase 9 (alertas) ---
+  server.on("/config", HTTP_GET, []() { server.send(200, "application/json", dcCfgEstadoJson()); });
+  server.on("/config", HTTP_POST, []() {
+    String e;
+    if (!dcCfgGuardar([](const String& k) { return server.arg(k); }, e)) { server.send(400, "text/plain", "Error: " + e); return; }
+    server.send(200, "text/plain", "Guardado. Si cambiaste WiFi o adaptador, reinicia el ESP32.");
+  });
+  server.on("/config/reset", HTTP_POST, []() {
+    if (server.arg("confirmar") != "RESTABLECER") { server.send(400, "text/plain", "Error: confirmacion requerida"); return; }
+    dcCfgReset();
+    server.send(200, "text/plain", "Valores de fabrica restaurados. Reinicia el ESP32.");
+  });
+  server.on("/reiniciar", HTTP_POST, []() { server.send(200, "text/plain", "Reiniciando..."); delay(300); ESP.restart(); });
+  server.on("/alertas", HTTP_GET, []() { server.send(200, "application/json", dcAlertJson()); });
+  server.begin();
+#ifndef SIMULATOR
+  dcObdBegin();
+#else
+  dcPref.begin("dcobd", false);
+  for (uint8_t i=0;i<4;i++) dcQ[i].estado=PQ_LIBRE;
+#endif
+  dcVinBegin();
+#ifdef SIMULATOR
+  dcEjecutarPruebasParsers();
+#endif
+}
+
+void loop() {
+  server.handleClient();
+#ifdef SIMULATOR
+  dcSim();
+  if (dcBt == BT_LISTO) { dcSiguientePuntual(); dcObdSimPuntuales(); }
+#else
+  dcObdLoop();
+#endif
+  dcDtcTick();
+  dcDtcTickBorrado();
+  dcVinTick();
+  dcAlertTick();
+}

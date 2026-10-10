@@ -1,0 +1,39 @@
+name: Firmware checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check API routes and data contract
+        run: python3 trabajo-0.7.0-remaster/herramientas/verificar_api.py
+
+      - name: Test DTC and VIN parsers
+        run: bash trabajo-0.7.0-remaster/herramientas/test_parsers.sh
+
+      - name: Check embedded JavaScript syntax
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('trabajo-0.7.0-remaster/ESP32-OBDC2/ESP32-OBDC2.ino').read_text(encoding='utf-8')
+          page = source.split('R"HTML(', 1)[1].split(')HTML";', 1)[0]
+          js = page.split('<script>', 1)[1].split('</script>', 1)[0]
+          Path('/tmp/dcesp32-page.js').write_text(js, encoding='utf-8')
+          PY
+          node --check /tmp/dcesp32-page.js

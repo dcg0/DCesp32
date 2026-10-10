@@ -1,0 +1,10 @@
+OK    unidades: mph -> Vas a 37 mph.
+
+fallos: 0
+OK    historial limitado a 300 muestras
+OK    dibuja líneas y leyendas
+OK    dibuja la línea punteada de alerta
+OK    sensor sin datos muestra "sin datos"
+OK    en pausa no redibuja
+
+fallos: 0

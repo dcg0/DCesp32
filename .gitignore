@@ -1,0 +1,11 @@
+# Generated build outputs
+build/
+*.elf
+*.bin
+*.hex
+
+# GitHub Pages build artifact
+_site/
+
+# Local Arduino CLI data
+.arduino15/

@@ -1,0 +1,279 @@
+// ESP32-OBDC2 · Fases 3 y 4 · WiFi propio "DC-OBD" -> http://192.168.4.1
+// Basado en ESP32-OBD2-Gauge de VaAndCob (MIT No Commercial Use)
+// Placa: ESP32 Dev Module · Core ESP32 2.0.17 · sin librerías externas
+
+#define FW_VERSION "0.7.0-dell"
+#include <WiFi.h>
+#include <WebServer.h>
+#include <math.h>
+#include "dc_data.h"
+#include "dc_cfg.h"
+#include "dc_obd.h"
+#include "dc_parsers.h"
+#include "dc_dtc.h"
+#include "dc_vin.h"
+#include "dc_alert.h"
+#include "dc_parser_tests.h"
+#include "dc_logos.h"
+
+//#define SIMULATOR   // descomenta para probar la web sin ELM327
+
+WebServer server(80);
+
+const char PAGINA[] PROGMEM = R"HTML(<!DOCTYPE html><html lang=es><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name=theme-color content="#07111e"><title>DCESP32-OBDC2 · Tablero OBD2</title>
+<style>
+:root{color-scheme:dark;--bg:#07111e;--panel:#122237;--line:#304960;--text:#f4f8ff;--muted:#c1cddd;--cyan:#45dcff;--green:#35e69a;--red:#ff6875}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background-color:var(--bg);background-image:radial-gradient(ellipse at 50% -20%,rgba(18,52,85,.55) 0,transparent 55%),linear-gradient(rgba(7,17,30,.76),rgba(7,17,30,.86)),url('/portada.webp?v2');background-size:auto,auto,cover;background-position:50% -20%,center,center;background-repeat:no-repeat;background-attachment:scroll,scroll,fixed;color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}body{min-height:100vh;display:flex;flex-direction:column;max-width:1180px;margin:0 auto;padding:12px clamp(12px,3vw,30px) 10px;gap:10px}
+#hd{display:flex;align-items:center;gap:12px;min-height:82px;padding:8px 12px;background:linear-gradient(120deg,#12283d,#101c2c);border:1px solid var(--line);border-radius:18px}#lg{width:62px;height:62px;border-radius:50%;object-fit:cover;background:#fff}#bn{width:min(42vw,330px);height:62px;object-fit:cover;border-radius:12px}#brand{min-width:0}#brand strong{display:block;font-size:clamp(19px,3vw,27px);letter-spacing:.03em}#brand span{display:block;color:var(--muted);font-size:13px}
+#st{display:flex;align-items:center;justify-content:center;gap:9px;text-align:center;padding:11px 14px;border-radius:13px;border:1px solid #853e48;background:#51202b;color:#fff;font-weight:750;font-size:clamp(14px,2vw,17px);min-height:46px}#st:before{content:"";width:10px;height:10px;flex:0 0 10px;border-radius:50%;background:var(--red)}#st.ok{background:#103c31;border-color:#247a5e}#st.ok:before{background:var(--green)}#al:empty{display:none}#al div{padding:12px 15px;border-radius:12px;margin:0 0 6px;font-size:16px;font-weight:750;border:1px solid #b17826;background:#5b3b13;color:#fff}#al .a2{background:#5a202a;border-color:#a9444d}#al button{margin:8px 0 0}
+#nav{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px}button.navtab{min-height:48px;padding:8px 5px;border:1px solid #38536d;border-radius:12px;background:#12243a;color:#e7f3ff;font-size:clamp(11px,1.5vw,14px);font-weight:750;line-height:1.25;cursor:pointer}button.navtab.on{background:linear-gradient(135deg,#0e7490,#155878);border-color:var(--cyan);color:#fff}
+#dots{display:flex;justify-content:center;gap:10px;padding:1px}#dots button{width:34px;height:18px;padding:0;border:0;background:transparent;cursor:pointer}#dots button:after{content:"";display:block;width:9px;height:9px;margin:auto;border-radius:99px;background:#586b80}#dots button.on:after{width:22px;background:var(--cyan)}
+#pages{flex:1 0 auto;min-height:440px;display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch;border-radius:18px}#pages::-webkit-scrollbar{display:none}.page{flex:0 0 100%;min-width:0;scroll-snap-align:start;overflow-y:auto;padding:clamp(12px,2.5vw,24px);background:linear-gradient(160deg,#0d1b2b,#0a1523 68%);border:1px solid var(--line);border-radius:18px}.pagehead{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:0 0 16px}.pagehead h2{font-size:clamp(23px,4vw,34px);line-height:1.15;margin:0;color:#fff}.pagehead p{margin:5px 0 0;color:var(--muted)}.eyebrow{color:var(--cyan)!important;font-size:12px;font-weight:800;letter-spacing:.12em}.badge{white-space:nowrap;border:1px solid #38617c;background:#102c41;border-radius:999px;padding:6px 11px;color:#c9f5ff;font-size:13px;font-weight:750}
+#g{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.c{min-width:0;min-height:116px;padding:14px;background:linear-gradient(150deg,#172b40,#102033);border:1px solid #29445e;border-radius:16px}.c small{display:block;color:#e1eaf4;font-size:14px;font-weight:650;line-height:1.3}.c b{display:block;margin:7px 0 0;color:var(--cyan);font-size:clamp(26px,4vw,37px);line-height:1.1;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.c.w{border-color:#a84d53;background:#321c27}.c.w b{color:#ff9297}.c small:last-child{color:#c5d3e2;font-size:13px;margin-top:4px}
+#c_rpm,#c_vel{min-height:214px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;text-align:center}#c_rpm>small,#c_vel>small{align-self:flex-start}.gauge{--p:0;--ring:#45dcff;position:relative;display:grid;place-items:center;width:clamp(108px,14vw,154px);aspect-ratio:1;border-radius:50%;background:conic-gradient(from -135deg,var(--ring) 0 calc(var(--p)*1%),#31465a calc(var(--p)*1%) 100%);box-shadow:0 0 0 1px #45617b,0 8px 22px #0006;transition:background .2s ease}.gauge:before{content:"";position:absolute;inset:9px;border-radius:50%;background:linear-gradient(145deg,#11263a,#091523);border:1px solid #45617b;box-shadow:inset 0 0 18px #040c14cc}.gauge-core{position:relative;display:flex;width:100%;height:100%;flex-direction:column;align-items:center;justify-content:center;padding:12px}.gauge-core b{margin:0;color:var(--cyan);font-size:clamp(25px,3.4vw,38px);line-height:1;font-variant-numeric:tabular-nums}.gauge-core small{margin-top:5px;color:#e1eaf4;font-size:13px}.gauge-scale{display:block;margin-top:4px;color:#aebed0;font-size:10px;white-space:nowrap}#c_vel .gauge{--ring:#35e69a}#c_vel .gauge-core b{color:#35e69a}#c_rpm.w .gauge,#c_vel.w .gauge{--ring:#ff6875}@media(max-width:700px){.gauge{width:clamp(104px,31vw,140px)}}
+.d{margin:0 0 12px;padding:17px;background:linear-gradient(150deg,#14263a,#101d2d);border:1px solid var(--line);border-radius:16px}.d>strong,.d>h3{display:block;margin:0 0 10px;font-size:19px;color:#fff}.d p{color:var(--muted);margin:8px 0}.d small{color:var(--muted);font-size:13px}button{font:inherit}.d button,#al button{min-height:45px;margin:5px 5px 5px 0;padding:10px 15px;border:1px solid #3d829c;border-radius:11px;background:linear-gradient(135deg,#1c7695,#155979);color:#fff;font-size:15px;font-weight:750;cursor:pointer}.d button.r{background:linear-gradient(135deg,#bd4354,#872a3b);border-color:#eb7381}.d button.secondary{background:#1a3048;border-color:#45627e}button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #ffd166;outline-offset:2px}
+#gc{display:block;width:100%;height:auto;aspect-ratio:600/250;background:#081321;border:1px solid #30465e;border-radius:12px;margin:10px 0 12px}#gsel{display:flex;flex-wrap:wrap;gap:5px 11px}#gsel label{display:flex;align-items:center;gap:6px;min-height:36px;font-size:14px;color:#edf5ff}#gsel input{width:18px;height:18px;accent-color:var(--cyan)}#gpb{min-width:150px}#aq{display:flex;flex-wrap:wrap;gap:4px}#aq button{font-size:14px}#ar{margin:12px 0;padding:13px;min-height:54px;border-radius:11px;background:#0b1928;border:1px solid #294159;color:#eef8ff;font-size:16px}.voice-label{display:inline-flex;align-items:center;gap:8px;color:#e7f2ff;font-weight:650;min-height:42px}#avoz{width:19px;height:19px;accent-color:var(--cyan)}#bmic{display:none}
+.info-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.info{min-width:0;padding:12px;background:#0b1928;border:1px solid #2b4258;border-radius:12px}.info span{display:block;color:#c6d5e5;font-size:13px;font-weight:650}.info strong{display:block;margin-top:4px;color:#f5f9ff;font-size:17px;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}.vin-value{font-size:clamp(19px,3vw,26px)!important;letter-spacing:.05em;color:var(--cyan)!important}.subhead{margin:15px 0 7px;color:#e6f1ff;font-size:15px;font-weight:750}.code-list{margin:0;padding-left:23px;color:#eef6ff}.code-list li{padding:4px 0;overflow-wrap:anywhere}#diag{white-space:pre-wrap;overflow-wrap:anywhere;color:#c8e0f1;font-size:12px;margin:10px 0 0}.setting-note{padding:11px 13px;border-radius:11px;background:#0b1928;color:#c9d8e8!important;border-left:3px solid var(--cyan);font-size:14px}
+label{display:inline-block;color:#e7f1ff;font-size:14px;margin:5px 8px 5px 0}input,select{max-width:100%;min-height:40px;padding:7px 9px;color:#fff;background:#091522;border:1px solid #45617b;border-radius:9px;font-size:15px}#cfgp{margin-top:10px}#cfgp>small{display:inline-block;margin:7px 0;color:#e0ebf7;font-size:13px}#cfgp input[type=number]{width:94px!important}#cfgp pre{white-space:pre-wrap;color:#bcefff;font-size:13px}
+footer{text-align:center;padding:8px 6px;color:#c0ccda;font-size:13px;line-height:1.5}footer span{display:block;margin-top:3px;color:#a5b6c9;font-size:11px}
+@media(max-width:700px){body{padding:8px;gap:8px}#hd{min-height:68px;padding:7px 9px;gap:8px}#lg{width:50px;height:50px}#bn{height:48px;width:min(36vw,185px)}#brand span{font-size:11px}#nav{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}button.navtab{min-height:44px;font-size:12px}#pages{min-height:440px}.page{padding:14px 12px}#g{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.c{min-height:105px;padding:12px 10px}.c small{font-size:13px}.c b{font-size:29px}.info-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pagehead{align-items:flex-start}.badge{font-size:11px;padding:5px 8px}.d{padding:14px}.d button{min-height:46px;padding:10px 12px}}
+@media(max-width:360px){#bn{display:none}#brand strong{font-size:20px}.c b{font-size:25px}.pagehead h2{font-size:23px}}
+
+.hist-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.hist-info{min-width:0;padding:11px;background:rgba(7,18,31,.8);border:1px solid #304960;border-radius:11px}
+.hist-info span{display:block;color:#c6d5e5;font-size:13px}
+.hist-info strong{display:block;margin-top:4px;overflow-wrap:anywhere;color:#f5f9ff;font-size:16px}
+.hist-session{display:grid;gap:5px;margin:8px 0;padding:12px;background:rgba(7,18,31,.82);border:1px solid #304960;border-radius:11px}
+.hist-session strong{color:#eaf7ff}
+.hist-session span{color:#cad8e7;font-size:13px}
+@media(max-width:700px){.hist-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+#gcards{display:grid;grid-template-columns:1fr;gap:13px}
+.gcard{padding:13px;background:rgba(8,19,33,.76);border:1px solid #30465e;border-radius:13px}
+.gcard-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:5px}
+.gcard-head strong{font-size:17px}
+.gcard-head span{color:var(--cyan);font-weight:750;font-variant-numeric:tabular-nums}
+.gcard canvas{display:block;width:100%;height:auto;aspect-ratio:600/180;background:rgba(3,10,18,.76);border-radius:9px}
+.g-empty{padding:18px;border:1px dashed #45617b;border-radius:12px;color:var(--muted);text-align:center}
+</style></head><body>
+<header id=hd><img id=lg src=/logo.webp?v2 alt="Logotipo DCESP32"><img id=bn src=/portada.webp?v2 alt="Banner DC Automotriz"><div id=brand><strong>DCESP32-OBDC2</strong><span>Tablero de diagnóstico OBD2</span></div></header>
+<div id=st role=status aria-live=polite>Conectando con el ESP32…</div><div id=al aria-live=assertive></div>
+<nav id=nav aria-label="Navegación de pantallas"><button class="navtab on" onclick="go(0)">1 · Tablero</button><button class=navtab onclick="go(1)">2 · Gráficas</button><button class=navtab onclick="go(2)">3 · Asistente</button><button class=navtab onclick="go(3)">4 · Fallas y vehículo</button><button class=navtab onclick="go(4)">5 · Ajustes</button><button class=navtab onclick="go(5)">6 · Historial</button></nav>
+<div id=dots aria-label="Indicador de pantalla"><button class=on aria-label="Ir al tablero"></button><button aria-label="Ir a gráficas"></button><button aria-label="Ir al asistente"></button><button aria-label="Ir a fallas y vehículo"></button><button aria-label="Ir a ajustes"></button><button aria-label="Ir al historial"></button></div>
+<main id=pages>
+<section class=page aria-label="Tablero"><div class=pagehead><div><p class=eyebrow>LECTURAS EN VIVO</p><h2>Tablero</h2><p>Valores actuales del vehículo · actualización automática</p></div><span class=badge>13 sensores</span></div><div id=g aria-live=polite></div></section>
+<section class=page aria-label="Gráficas"><div class=pagehead><div><p class=eyebrow>HISTORIAL EN EL CELULAR</p><h2>Gráficas</h2><p>Elige hasta 4 sensores para comparar</p></div><span class=badge>Últimas muestras</span></div><div class=d><strong>Sensores visibles</strong><div id=gsel></div><strong>Gráfica comparativa</strong><canvas id=gc width=600 height=250 aria-label="Gráfica comparativa de sensores OBD2"></canvas><strong>Gráficas individuales</strong><div id=gcards aria-live=polite></div><button id=gpb onclick="gPausa()">Pausar gráficas</button><p>La línea punteada indica el umbral de alerta configurado.</p></div></section>
+<section class=page aria-label="Asistente"><div class=pagehead><div><p class=eyebrow>CONSULTA POR BOTONES O VOZ</p><h2>Asistente</h2><p>Responde usando las lecturas disponibles del vehículo</p></div></div><div class=d><strong>¿Qué quieres consultar?</strong><div id=aq></div><div id=ar aria-live=polite>Elige una pregunta para ver la respuesta.</div><label class=voice-label><input type=checkbox id=avoz checked> Leer las respuestas en voz alta</label> <button id=bmic onclick="escuchar()">Hablar al asistente</button><p class=setting-note>Por seguridad, el asistente no borra fallas ni cambia la configuración. Si un sensor no tiene lectura, lo indicará.</p></div></section>
+<section class=page aria-label="Fallas y vehículo"><div class=pagehead><div><p class=eyebrow>DIAGNÓSTICO Y DATOS DEL AUTO</p><h2>Fallas y vehículo</h2><p>Consulta información del adaptador y del vehículo</p></div></div><div class=d><strong>Identificación del vehículo</strong><div class=info-grid><div class=info><span>VIN</span><strong id=vin class=vin-value>Aún no leído</strong></div><div class=info><span>Estado de lectura VIN</span><strong id=vehEstado>Sin consultar</strong></div><div class=info><span>Protocolo</span><strong id=vehProtocolo>--</strong></div><div class=info><span>Voltaje informado</span><strong id=vehVoltaje>--</strong></div></div><button class=secondary onclick="leerVin()">Leer VIN del vehículo</button></div><div class=d><strong>Conexión y firmware</strong><div class=info-grid><div class=info><span>Bluetooth / ELM327</span><strong id=btState>Conectando…</strong></div><div class=info><span>Firmware</span><strong id=fw>--</strong></div><div class=info><span>Ritmo de lectura</span><strong id=pps>--</strong></div><div class=info><span>Tiempo activo</span><strong id=up>--</strong></div><div class=info><span>Memoria libre</span><strong id=heap>--</strong></div></div></div><div class=d><strong>Códigos de falla (DTC)</strong><div class=info-grid><div class=info><span>Estado de lectura</span><strong id=dtcEstado>Aún no leído</strong></div><div class=info><span>Luz MIL</span><strong id=mil>--</strong></div><div class=info><span>Cantidad reportada</span><strong id=dtcCuenta>--</strong></div></div><button onclick="leerDtc()">Leer fallas del vehículo</button><button class="r" onclick="borrarDtc()">Borrar fallas…</button><p class=setting-note>“Borrar fallas” solicitará confirmación antes de enviar el comando al vehículo.</p><h3 class=subhead>Fallas almacenadas</h3><ul id=dtcAlmacenados class=code-list><li>Sin lectura</li></ul><h3 class=subhead>Fallas pendientes</h3><ul id=dtcPendientes class=code-list><li>Sin lectura</li></ul><h3 class=subhead>Fallas permanentes</h3><ul id=dtcPermanentes class=code-list><li>Sin lectura</li></ul><pre id=diag>Estado de diagnóstico: pendiente de consulta.</pre></div></section>
+<section class=page aria-label="Ajustes"><div class=pagehead><div><p class=eyebrow>PERSONALIZA TU TABLERO</p><h2>Ajustes</h2><p>Unidades, alertas, adaptador y punto WiFi</p></div></div><div class=d><strong>Configuración del sistema</strong><p>Abre el panel para editar los umbrales y las opciones guardadas en el ESP32.</p><button onclick="cfgAbrir()">Abrir configuración</button><div id=cfgp></div></div><div class=d><strong>Información de seguridad</strong><p class=setting-note>Los cambios de WiFi o del adaptador Bluetooth pueden requerir reiniciar el ESP32. Restablecer los valores de fábrica requiere confirmación.</p></div></section>
+<section class=page aria-label="Registro e historial"><div class=pagehead><div><p class=eyebrow>DATOS LOCALES DE ESTA PÁGINA</p><h2>Registro / Historial</h2><p>Muestras reales recibidas desde la API del ESP32</p></div><span class=badge>Guardado en este teléfono</span></div><div class=d><strong>Sesión actual</strong><div class=hist-grid><div class=hist-info><span>Inicio · hora local del teléfono</span><strong id=histStart>Esperando datos de /data</strong></div><div class=hist-info><span>Última muestra guardada · hora local</span><strong id=histLast>--</strong></div><div class=hist-info><span>Muestras guardadas de /data</span><strong id=histSamples>0</strong></div><div class=hist-info><span>Estado ELM según API</span><strong id=histBt>--</strong></div><div class=hist-info><span>Firmware informado por API</span><strong id=histFw>--</strong></div><div class=hist-info><span>Uptime ESP32 informado por API</span><strong id=histUptime>--</strong></div><div class=hist-info><span>Promedio de RPM guardadas</span><strong id=histAvgRpm>--</strong></div><div class=hist-info><span>Promedio de refrigerante</span><strong id=histAvgEct>--</strong></div><div class=hist-info><span>Promedio de velocidad</span><strong id=histAvgVel>--</strong></div><div class=hist-info><span>Promedio de nivel combustible (012F)</span><strong id=histAvgFuel>--</strong></div><div class=hist-info><span>VIN informado por /vehiculo</span><strong id=histVin>No informado</strong></div><div class=hist-info><span>Kilometraje / odómetro</span><strong id=histOdo>No disponible en la API</strong></div><div class=hist-info><span>Distancia recorrida</span><strong id=histDistance>No disponible en la API</strong></div><div class=hist-info><span>Consumo de combustible</span><strong id=histConsumption>No disponible en la API</strong></div><div class=hist-info><span>Duración exacta conectada</span><strong id=histConnTime>No disponible en la API</strong></div></div><p class=setting-note>Las lecturas y el estado proceden de la API. La API 012F entrega nivel de combustible (%), no consumo. No se estima kilometraje, distancia ni duración conectada. Las fechas son metadatos del reloj local del teléfono. El historial permanece en este navegador y solo se comparte al exportarlo.</p><div id=histStorage class=empty aria-live=polite>El registro comienza al recibir datos válidos.</div><button onclick="logShare()">Compartir o copiar historial JSON</button><button class=secondary onclick="logCsv()">Descargar muestras CSV</button></div><div class=d><strong>Sesiones guardadas</strong><div id=histSessions></div></div><div class=d><strong>Historial de lecturas DTC</strong><p>Los eventos se anotan cuando se consulta la API; los tiempos son del teléfono. Una solicitud aceptada para borrar no implica que la API confirme el borrado.</p><ul id=histEvents class=code-list></ul></div></section></main><footer>DCESP32 basado en DC-tuner-Studio · autor Proyectos DC Laboratory<span>Basado en ESP32-OBD2-Gauge de VaAndCob · licencia MIT No Commercial Use</span></footer>
+<script>
+const E=["Desconectado","Conectando…","Inicializando…","Conectado","Sin respuesta del auto"];let cfg=[];
+function $(i){return document.getElementById(i)}
+let pg=$('pages'),cur=0,N=pg.children.length;
+function go(i){i=Math.max(0,Math.min(N-1,i));pg.scrollTo({left:i*pg.clientWidth,behavior:'smooth'})}
+function mark(){if(!pg.clientWidth)return;cur=Math.max(0,Math.min(N-1,Math.round(pg.scrollLeft/pg.clientWidth)));document.querySelectorAll('.navtab').forEach((x,k)=>{x.classList.toggle('on',k===cur);x.setAttribute('aria-current',k===cur?'page':'false')});document.querySelectorAll('#dots button').forEach((x,k)=>x.classList.toggle('on',k===cur));try{localStorage.setItem('dcpg',cur)}catch(e){}if(cur===1&&!gPaus&&gInit)gDib()}
+function initSwipe(){document.querySelectorAll('#dots button').forEach((x,k)=>x.onclick=()=>go(k));pg.addEventListener('scroll',()=>{clearTimeout(pg._mt);pg._mt=setTimeout(mark,70)});document.addEventListener('keydown',e=>{if(e.key==='ArrowRight')go(cur+1);if(e.key==='ArrowLeft')go(cur-1)});try{const q=parseInt(localStorage.getItem('dcpg'));if(q>=0&&q<N)pg.scrollLeft=q*pg.clientWidth}catch(e){}mark()}
+async function init(){cfg=await(await fetch('/cfg')).json();
+$('g').innerHTML=cfg.map(p=>(p.id==='rpm'||p.id==='vel')?`<div class="c" id=c_${p.id}><small>${p.n}</small><div class="gauge" style="--p:0" role="meter" aria-valuemin="0" aria-valuenow="0" aria-valuemax="${p.id==='rpm'?8000:240}"><div class="gauge-core"><b>--</b><small>${p.u}</small><span class="gauge-scale">0 — ${p.id==='rpm'?8000:240} ${p.u}</span></div></div></div>`:`<div class=c id=c_${p.id}><small>${p.n}</small><b>--</b><small>${p.u}</small></div>`).join('');gInit=true;gSelUI();initSwipe();tick();refrescaEstado();actualizaVehiculo();setInterval(refrescaEstado,3000);setInterval(()=>{actualizaVehiculo();if(dtcLeido)actualizaDtc()},2200)}
+async function tick(){try{const j=await(await fetch('/data',{cache:'no-store'})).json();try{alimenta(j)}catch(e){}
+$('st').textContent=(E[j.bt]||'Estado desconocido')+' · '+j.pps+' PID/s · Adaptador ELM327';$('st').className=j.bt==3?'ok':'';try{logSample(j)}catch(e){}
+cfg.forEach(p=>{const v=j.d[p.id],c=$('c_'+p.id);if(!c)return;const r=cv(p,v);c.querySelector('b').textContent=r[0];const sm=c.querySelectorAll('small');if(sm[1])sm[1].textContent=r[1];const dial=c.querySelector('.gauge');if(dial){const maxRaw=p.id==='rpm'?8000:240,maxShown=p.id==='vel'&&U.uv?150:maxRaw,n=v==null?0:Number(v),pct=Number.isFinite(n)?Math.max(0,Math.min(100,n/maxRaw*100)):0,shown=Number(r[0]);dial.style.setProperty('--p',pct.toFixed(1));dial.setAttribute('aria-valuemax',maxShown);dial.setAttribute('aria-valuenow',Number.isFinite(shown)?shown:0);dial.setAttribute('aria-label',p.n+': '+r[0]+' '+r[1]);const scale=dial.querySelector('.gauge-scale');if(scale)scale.textContent='0 — '+maxShown+' '+r[1]}
+c.className='c'+(v!=null&&p.w>0&&v>=p.w?' w':'')})}
+catch(e){$('st').textContent='Sin enlace con el ESP32';$('st').className=''}setTimeout(tick,400)}
+async function refrescaEstado(){try{const s=await(await fetch('/status',{cache:'no-store'})).json();$('btState').textContent=E[s.bt]||'Desconocido';$('fw').textContent=s.fw||'--';$('pps').textContent=(s.pps==null?'--':s.pps)+' PID/s';$('up').textContent=s.up==null?'--':Math.floor(s.up/60)+' min';$('heap').textContent=s.heap==null?'--':Math.round(s.heap/1024)+' KB'}catch(e){$('btState').textContent='Sin conexión'}}
+async function actualizaVehiculo(){try{const v=await(await fetch('/vehiculo',{cache:'no-store'})).json();$('vehEstado').textContent=v.estado||'--';$('vin').textContent=v.vin||'Aún no leído';$('vehProtocolo').textContent=v.protocolo||'--';$('vehVoltaje').textContent=v.voltaje==null?'--':v.voltaje+' V';logVinValue(v.vin)}catch(e){}}
+function pintaLista(id,items){const ul=$(id);ul.textContent='';if(!items||!items.length){const li=document.createElement('li');li.textContent='Sin códigos en esta categoría';ul.appendChild(li);return}items.forEach(x=>{const li=document.createElement('li');li.textContent=(x.c||x.codigo||'Código')+(x.d||x.descripcion?' — '+(x.d||x.descripcion):'');ul.appendChild(li)})}
+async function actualizaDtc(){try{const j=await(await fetch('/dtc',{cache:'no-store'})).json();$('dtcEstado').textContent=j.estado||'--';$('mil').textContent=j.mil==null?'--':(j.mil?'Encendida':'Apagada');$('dtcCuenta').textContent=j.cuenta==null?'--':j.cuenta;pintaLista('dtcAlmacenados',j.almacenados);pintaLista('dtcPendientes',j.pendientes);pintaLista('dtcPermanentes',j.permanentes);logDtc(j)}catch(e){$('dtcEstado').textContent='No se pudo leer el resultado'}}
+async function leerDtc(){dtcLeido=true;logDtcRequested=true;$('dtcEstado').textContent='Solicitando lectura al vehículo…';try{await fetch('/dtc/leer',{method:'POST'});setTimeout(actualizaDtc,700)}catch(e){$('dtcEstado').textContent='No se pudo iniciar la lectura'}}
+async function leerVin(){$('vehEstado').textContent='Solicitando VIN…';try{await fetch('/vehiculo/leer',{method:'POST'});setTimeout(actualizaVehiculo,900)}catch(e){$('vehEstado').textContent='No se pudo iniciar la lectura'}}
+async function borrarDtc(){if(!confirm('ADVERTENCIA: apaga la MIL y reinicia monitores de preparación. Se recomienda motor apagado y contacto ON. ¿Confirmas BORRAR?'))return;const r=await fetch('/dtc/borrar',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'confirmar=BORRAR'});$('diag').textContent=await r.text()}
+let U={uv:0,ut:0,up:0},ocultoKey='',prevKey='';
+function cv(p,v){if(v==null)return['--',p.u];const k=p.u;
+if(k=='km/h'&&U.uv)return[(v*0.621371).toFixed(0),'mph'];
+if(k=='°C'&&U.ut)return[(v*9/5+32).toFixed(1),'°F'];
+if(k=='kPa'&&U.up)return[(v*0.145038).toFixed(1),'psi'];
+return[v,k]}
+async function cargaU(){try{U=await(await fetch('/config')).json()}catch(e){}}
+function beep(){try{const a=new(window.AudioContext||window.webkitAudioContext)(),o=a.createOscillator();o.frequency.value=880;o.connect(a.destination);o.start();setTimeout(()=>{o.stop();a.close()},250)}catch(e){}}
+function silenciar(){ocultoKey=prevKey;$('al').innerHTML=''}
+async function alertas(){try{const j=await(await fetch('/alertas')).json();
+const key=j.a.map(x=>x.id+x.nv).join(',');
+if(!j.a.length){$('al').innerHTML='';prevKey='';ocultoKey=''}
+else{if(key!=prevKey){prevKey=key;ocultoKey='';try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(e){}beep()}
+if(key!=ocultoKey)$('al').innerHTML=j.a.map(x=>{const p=x.p&&cfg.find(c=>c.id==x.p);const r=(p&&x.v!=null)?' · '+cv(p,x.v).join(' '):'';return'<div class="a'+x.nv+'">'+x.n+' '+x.t+r+'</div>'}).join('')+'<button onclick="silenciar()">Entendido</button>'}
+}catch(e){}setTimeout(alertas,1000)}
+async function cfgAbrir(){const c=await(await fetch('/config')).json();U=c;
+let h='<small>Umbrales de alerta (0 = sin alerta). Unidades base: km/h, °C, kPa</small><br>';
+cfg.forEach(p=>{h+='<label>'+p.n+' <input id=w_'+p.id+' type=number step=any value="'+c.warn[p.id]+'" style="width:80px"></label>'});
+h+='<br><label>Voltaje bajo (V) <input id=cvb type=number step=any value="'+c.vb+'" style="width:80px"></label>'
++'<br><label>Velocidad <select id=cuv><option value=0>km/h<option value=1>mph</select></label>'
++'<label>Temp <select id=cut><option value=0>°C<option value=1>°F</select></label>'
++'<label>Presión <select id=cup><option value=0>kPa<option value=1>psi</select></label>'
++'<br><label>Adaptador BT <input id=cad value="'+c.ad+'" maxlength=23></label>'
++'<br><label>WiFi <input id=css value="'+c.ssid+'" maxlength=32></label><label>Clave <input id=cpw type=password placeholder="(sin cambios)" maxlength=32></label>'
++'<br><button onclick="cfgGuardar()">Guardar</button><button onclick="cfgReset()">Restablecer</button><button onclick="reiniciar()">Reiniciar ESP32</button><pre id=cmsg></pre>';
+$('cfgp').innerHTML=h;$('cuv').value=c.uv;$('cut').value=c.ut;$('cup').value=c.up}
+async function cfgGuardar(){const b=new URLSearchParams();cfg.forEach(p=>b.set('w_'+p.id,$('w_'+p.id).value));
+b.set('vb',$('cvb').value);b.set('uv',$('cuv').value);b.set('ut',$('cut').value);b.set('up',$('cup').value);b.set('ad',$('cad').value);b.set('ss',$('css').value);
+if($('cpw').value)b.set('pw',$('cpw').value);
+const r=await fetch('/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:b.toString()});
+$('cmsg').textContent=await r.text();await cargaU();try{cfg=await(await fetch('/cfg')).json()}catch(e){}}
+async function cfgReset(){if(!confirm('¿Restablecer TODA la configuración a valores de fábrica?'))return;
+const r=await fetch('/config/reset',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'confirmar=RESTABLECER'});
+$('cmsg').textContent=await r.text();await cargaU();try{cfg=await(await fetch('/cfg')).json()}catch(e){}}
+async function reiniciar(){if(!confirm('¿Reiniciar el ESP32? Se perderá la conexión unos segundos.'))return;try{await fetch('/reiniciar',{method:'POST'})}catch(e){}}
+let H={},GSEL=['rpm','ect','carga','volt'],gPaus=false,gInit=false,ultJ=null,dtcLeido=false;const COL=['#12e6f0','#ffd54a','#ff6ad5','#7cff6b'],GMAX=300;
+function alimenta(j){ultJ=j;for(const id in j.d){(H[id]=H[id]||[]).push(j.d[id]);if(H[id].length>GMAX)H[id].shift()}
+if(!gInit&&cfg.length){gInit=true;gSelUI()}
+if(!gPaus&&!document.hidden&&gInit&&cur===1)gDib()}
+function gSelUI(){$('gsel').innerHTML=cfg.map(p=>'<label><input type=checkbox value='+p.id+(GSEL.includes(p.id)?' checked':'')+' onchange="gToggle(this)">'+p.n+'</label>').join('');gCards()}
+function gToggle(el){if(el.checked){GSEL.push(el.value);if(GSEL.length>4){const q=GSEL.shift(),o=document.querySelector('#gsel input[value='+q+']');if(o)o.checked=false}}else GSEL=GSEL.filter(x=>x!=el.value);gCards();if(cur===1)gDib()}
+function gPausa(){gPaus=!gPaus;$('gpb').textContent=gPaus?'Reanudar gráficas':'Pausar gráficas'}
+function gDibPrincipal(){const c=$('gc');if(!c)return;const x=c.getContext('2d');if(!x)return;const W=c.width,Hh=c.height;x.clearRect(0,0,W,Hh);x.strokeStyle='#223';x.lineWidth=1;
+for(let i=1;i<4;i++){x.beginPath();x.moveTo(0,Hh*i/4);x.lineTo(W,Hh*i/4);x.stroke()}
+x.font='15px sans-serif';let ly=16;
+GSEL.forEach((id,k)=>{const p=cfg.find(c=>c.id==id),a=H[id]||[];if(!p)return;const vs=a.filter(v=>v!=null);
+x.strokeStyle=x.fillStyle=COL[k];
+if(vs.length<2){x.fillText(p.n+': sin datos',8,ly);ly+=18;return}
+let lo=Math.min(...vs),hi=Math.max(...vs);if(p.w>0){lo=Math.min(lo,p.w);hi=Math.max(hi,p.w)}if(hi==lo)hi=lo+1;
+const Y=v=>Hh-8-(v-lo)/(hi-lo)*(Hh-16),X=i=>W-(a.length-1-i)*W/(GMAX-1);
+x.lineWidth=2;x.beginPath();let on=false;
+a.forEach((v,i)=>{if(v==null){on=false;return}if(on)x.lineTo(X(i),Y(v));else{x.moveTo(X(i),Y(v));on=true}});x.stroke();
+if(p.w>0){x.lineWidth=1;x.setLineDash([6,4]);x.beginPath();x.moveTo(0,Y(p.w));x.lineTo(W,Y(p.w));x.stroke();x.setLineDash([])}
+const u=a[a.length-1];x.fillText(p.n+' '+(u==null?'--':cv(p,u).join(' ')),8,ly);ly+=18})}
+function gCards(){const box=$('gcards');if(!box)return;const rows=GSEL.map(id=>({id,p:cfg.find(x=>x.id===id)})).filter(x=>x.p);if(!rows.length){box.innerHTML='<div class="g-empty">Selecciona uno o más sensores arriba para ver sus gráficas individuales.</div>';return}box.innerHTML=rows.map(({id,p})=>'<article class=gcard><div class=gcard-head><strong>'+p.n+'</strong><span id="gv_'+id+'">Esperando lectura</span></div><canvas id="gc_ind_'+id+'" width=600 height=180 aria-label="Gráfica individual de '+p.n+'"></canvas></article>').join('')}
+function gDibIndividual(){if(!Array.isArray(GSEL)||!Array.isArray(cfg))return;GSEL.forEach((id,k)=>{const p=cfg.find(x=>x.id===id);if(!p)return;const canvasId='gc_ind_'+id,c=$(canvasId);if(!c)return;const x=c.getContext('2d');if(!x)return;const W=c.width||600,Hh=c.height||180,a=Array.isArray(H[id])?H[id]:[],values=a.map(v=>v==null?null:Number(v)),valid=values.filter(v=>v!==null&&Number.isFinite(v)),last=values.length?values[values.length-1]:null,label=$('gv_'+id);if(label)label.textContent=last==null||!Number.isFinite(last)?'Sin dato de la API':cv(p,last).join(' ');x.clearRect(0,0,W,Hh);x.strokeStyle='#24384d';x.lineWidth=1;for(let i=1;i<4;i++){x.beginPath();x.moveTo(0,Hh*i/4);x.lineTo(W,Hh*i/4);x.stroke()}x.font='14px sans-serif';x.fillStyle='#c9d8e8';if(!valid.length){x.fillText('Sin datos de la API',8,22);return}let lo=Math.min(...valid),hi=Math.max(...valid);if(hi===lo){const pad=Math.max(1,Math.abs(lo)*0.05);lo-=pad;hi+=pad}else{const pad=(hi-lo)*0.12;lo-=pad;hi+=pad}const Y=v=>Hh-12-(v-lo)/(hi-lo)*(Hh-28),X=i=>values.length<2?W/2:10+i*(W-20)/(values.length-1),color=COL[k%COL.length];if(p.w>0&&p.w>=lo&&p.w<=hi){const y=Y(p.w);x.strokeStyle='#ffd166';x.setLineDash([6,4]);x.beginPath();x.moveTo(0,y);x.lineTo(W,y);x.stroke();x.setLineDash([]);x.fillStyle='#ffe09a';x.fillText('Umbral '+cv(p,p.w).join(' '),8,Hh-3)}else if(p.w>0){x.fillStyle='#c9d8e8';x.fillText('Umbral fuera del rango visible',8,Hh-3)}x.strokeStyle=color;x.fillStyle=color;x.lineWidth=2;x.beginPath();let on=false;values.forEach((v,i)=>{if(v===null||!Number.isFinite(v)){on=false;return}const px=X(i),py=Y(v);if(on)x.lineTo(px,py);else{x.moveTo(px,py);on=true}});x.stroke();if(valid.length===1){const idx=values.findIndex(v=>v!==null&&Number.isFinite(v));x.beginPath();x.arc(X(idx),Y(values[idx]),5,0,Math.PI*2);x.fill()}})}
+function gDib(){if(gPaus||document.hidden||cur!==1)return;gDibPrincipal();gDibIndividual()}
+function norm(q){return q.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')}
+function dato(id,j,cf){const p=cf.find(c=>c.id==id),v=(j&&j.d)?j.d[id]:null;return{p:p,v:v,t:(p&&v!=null)?cv(p,v).join(' '):null}}
+function responder(q,j,cf,al,dt){q=norm(q);
+if(/borr|elimin|limpi|reset|restabl|reinici|configur|cambi|apag/.test(q))return'Por seguridad no puedo borrar fallas ni cambiar la configuración por voz. Usa los botones de la pantalla.';
+const D=id=>dato(id,j,cf),sin=n=>'Aún no tengo dato '+n+'.';
+const uno=(id,n,txt)=>{const d=D(id);if(d.t==null)return sin(n);let r=txt+' '+d.t+'.';if(d.p.w>0&&d.v>=d.p.w)r+=' Está por encima de tu umbral de '+cv(d.p,d.p.w).join(' ')+'.';return r};
+if(/resumen|todo|general|como va/.test(q)){const ps=[['rpm','RPM'],['vel','Velocidad'],['ect','Refrigerante'],['volt','Voltaje']].map(a=>[a[1],D(a[0]).t]).filter(a=>a[1]!=null).map(a=>a[0]+' '+a[1]);
+let r=ps.length?ps.join(', ')+'.':'Todavía no tengo datos.';if(al&&al.n>0)r+=' Hay '+al.n+' alerta(s) activa(s).';return r}
+if(/temperatura|calient|refriger|ect/.test(q))return uno('ect','de la temperatura del refrigerante','El refrigerante está a');
+if(/rpm|revoluc|regimen/.test(q))return uno('rpm','de las RPM','El motor está a');
+if(/volt|bateria/.test(q))return uno('volt','del voltaje','El voltaje es');
+if(/carga|esfuerzo/.test(q))return uno('carga','de la carga del motor','La carga del motor es');
+if(/velocidad|rapido|km/.test(q))return uno('vel','de la velocidad','Vas a');
+if(/combustible|gasolina|tanque/.test(q))return uno('comb','del combustible','El nivel de combustible es');
+if(/aceite/.test(q))return uno('oil','de la temperatura del aceite','El aceite está a');
+if(/falla|codigo|dtc|check|mil/.test(q)){if(!dt||dt.cuenta==null)return'Aún no has leído las fallas. Pulsa "Leer fallas" y vuelve a preguntarme.';return'Según la última lectura: luz MIL '+(dt.mil?'encendida':'apagada')+' y '+dt.cuenta+' falla(s). Pulsa "Leer fallas" para ver los códigos.'}
+if(/alerta|aviso|problema/.test(q)){if(!al)return'No pude consultar las alertas.';return al.n>0?'Alertas activas: '+al.a.map(x=>x.n+' '+x.t).join(', ')+'.':'No hay alertas activas.'}
+if(/conexion|bluetooth|elm|conectado/.test(q))return j?'Estado: '+E[j.bt]+'.':'Sin enlace con el ESP32.';
+return'No entendí. Prueba con: resumen, temperatura, RPM, voltaje, fallas, alertas o conexión.'}
+function hablar(t){try{if($('avoz').checked&&window.speechSynthesis){speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang='es-MX';speechSynthesis.speak(u)}}catch(e){}}
+async function pregunta(q){let al=null,dt=null;try{al=await(await fetch('/alertas')).json()}catch(e){}
+if(dtcLeido){try{dt=await(await fetch('/dtc')).json()}catch(e){}}
+const r=responder(q,ultJ,cfg,al,dt);$('ar').textContent=r;hablar(r)}
+function aqUI(){$('aq').innerHTML=['Resumen','Temperatura','RPM','Voltaje','Velocidad','Fallas','Alertas','Conexión'].map(t=>'<button onclick="pregunta(\''+t+'\')">'+t+'</button>').join('')}
+function iniMic(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR)return;window.__SR=SR;$('bmic').style.display=''}
+function escuchar(){const r=new window.__SR();r.lang='es-MX';r.onresult=e=>{const t=e.results[0][0].transcript;$('ar').textContent='« '+t+' »';pregunta(t)};
+r.onerror=()=>{$('ar').textContent='El micrófono no está disponible (suele requerir internet). Usa los botones.';$('bmic').style.display='none'};try{r.start()}catch(e){}}
+const LOG_KEY='dcobd_historial_api_v1',LOG_PERIOD=15000,LOG_MAX_SESSIONS=12,LOG_MAX_SAMPLES=600;
+const LOG_PIDS=['rpm','vel','acel','carga','ect','map','maf','iat','volt','stft','ltft','comb','oil'],LOG_AVGS=['rpm','ect','comb','vel'];
+let logStore={sessions:[],events:[]},logSession=null,logLastSample=0,logDtcSignature='',logDtcRequested=false,logVin='';
+function logClock(t){return new Date(t||Date.now()).toLocaleString()}
+function logPersist(){try{localStorage.setItem(LOG_KEY,JSON.stringify(logStore));return true}catch(e){const x=$('histStorage');if(x)x.textContent='El navegador no pudo guardar más historial.';return false}}
+function logInit(){try{const x=JSON.parse(localStorage.getItem(LOG_KEY)||'{}');if(Array.isArray(x.sessions))logStore.sessions=x.sessions;if(Array.isArray(x.events))logStore.events=x.events}catch(e){logStore={sessions:[],events:[]}}
+const now=Date.now();logStore.sessions.forEach(s=>{if(!s.closed){s.closed=true;s.endAt=now;s.endLocal=logClock(now);s.endReason='El panel se volvió a abrir'}});logPersist();logRender()}
+function logStart(j,now){logSession={id:now,startAt:now,startLocal:logClock(now),lastAt:now,lastLocal:logClock(now),endAt:null,endLocal:'',closed:false,startUp:j.up==null?null:Number(j.up),lastUp:j.up==null?null:Number(j.up),bt:j.bt,fw:j.fw||'',vin:logVin,sampleCount:0,samples:[],sum:{},count:{},avg:{}};logStore.sessions.unshift(logSession);logStore.sessions=logStore.sessions.slice(0,LOG_MAX_SESSIONS);logLastSample=0}
+function logEvent(type,message,data){const e={at:Date.now(),local:logClock(),type:type,message:message,data:data||null,sessionId:logSession?logSession.id:null};logStore.events.unshift(e);logStore.events=logStore.events.slice(0,120);logPersist();logRender()}
+function logVinValue(v){logVin=v||'';if(logSession&&logVin){logSession.vin=logVin;logPersist();logRender()}}
+function logSample(j){if(!j||!j.d)return;const now=Date.now();if(!logSession||logSession.closed)logStart(j,now);logSession.lastAt=now;logSession.lastLocal=logClock(now);logSession.lastUp=j.up==null?null:Number(j.up);logSession.bt=j.bt;logSession.fw=j.fw||logSession.fw;
+if(now-logLastSample<LOG_PERIOD)return;const d={};LOG_PIDS.forEach(id=>{const v=j.d[id];d[id]=v==null||!Number.isFinite(Number(v))?null:Number(v)});const sample={at:now,local:logClock(now),up:j.up==null?null:Number(j.up),bt:j.bt,pps:j.pps==null?null:Number(j.pps),d:d};logSession.samples.push(sample);if(logSession.samples.length>LOG_MAX_SAMPLES)logSession.samples.shift();logSession.sampleCount++;
+LOG_AVGS.forEach(id=>{const v=d[id];if(v==null)return;logSession.sum[id]=(logSession.sum[id]||0)+v;logSession.count[id]=(logSession.count[id]||0)+1;logSession.avg[id]=logSession.sum[id]/logSession.count[id]});logLastSample=now;logPersist();logRender()}
+function logDtc(j){if(!j||j.estado!=='listo')return;const codes=[];[['almacenados','Almacenada'],['pendientes','Pendiente'],['permanentes','Permanente']].forEach(g=>(j[g[0]]||[]).forEach(x=>codes.push({grupo:g[1],codigo:x.c||'',descripcion:x.d||''})));const payload={estado:j.estado,mil:j.mil==null?null:Number(j.mil),cuenta:j.cuenta==null?null:Number(j.cuenta),codes:codes};const sig=JSON.stringify(payload),changed=sig!==logDtcSignature,requested=logDtcRequested;if(!changed&&!requested)return;logDtcSignature=sig;logDtcRequested=false;const desc=codes.length?codes.map(x=>x.codigo+' ('+x.grupo+')').join(', '):'sin códigos en la respuesta';logEvent('lectura-dtc',(requested?'Resultado de consulta DTC de la API: ':'Cambio observado en DTC de la API: ')+desc,payload)}
+function logAvg(s,id){if(!s||!s.count||!s.count[id])return'--';const p=cfg.find(x=>x.id===id);if(!p)return String(s.avg[id]);const r=cv(p,s.avg[id]);if(typeof r[0]==='number'&&Number.isFinite(r[0]))r[0]=r[0].toFixed(1);return r.join(' ')}
+function logNode(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!=null)n.textContent=text;return n}
+function logRender(){const s=logSession;const set=(id,v)=>{const n=$(id);if(n)n.textContent=v};set('histStart',s?s.startLocal:'Esperando la primera respuesta de /data');set('histLast',s?s.lastLocal:'--');set('histSamples',s?String(s.sampleCount):'0');set('histBt',s?(E[s.bt]||'Estado '+s.bt):'--');set('histFw',s?(s.fw||'--'):'--');set('histUptime',s&&s.lastUp!=null?s.lastUp+' s':'No informado');set('histAvgRpm',logAvg(s,'rpm'));set('histAvgEct',logAvg(s,'ect'));set('histAvgFuel',logAvg(s,'comb'));set('histAvgVel',logAvg(s,'vel'));set('histVin',s&&s.vin?s.vin:'No informado por /vehiculo');
+set('histOdo','No disponible en la API');set('histDistance','No disponible en la API');set('histConsumption','No disponible en la API');
+const sessions=$('histSessions');if(sessions){sessions.textContent='';if(!logStore.sessions.length)sessions.appendChild(logNode('p','empty','Todavía no hay sesiones guardadas. Se iniciará con la primera respuesta válida de /data.'));logStore.sessions.forEach(r=>{const card=logNode('article','hist-session');card.appendChild(logNode('strong','',(r.closed?'Sesión finalizada':'Sesión actual')+' · '+(r.startLocal||'Hora local no registrada')));card.appendChild(logNode('span','',`Muestras guardadas: ${r.sampleCount||0} · RPM promedio: ${logAvg(r,'rpm')} · Refrigerante promedio: ${logAvg(r,'ect')} · Nivel de combustible promedio: ${logAvg(r,'comb')}`));card.appendChild(logNode('span','',`Estado Bluetooth/API: ${E[r.bt]||'--'} · Uptime ESP32 informado: ${r.lastUp==null?'--':r.lastUp+' s'} · VIN: ${r.vin||'No informado'}`));sessions.appendChild(card)})}
+const events=$('histEvents');if(events){events.textContent='';if(!logStore.events.length)events.appendChild(logNode('p','empty','Aún no hay eventos de fallas registrados. Pulsa “Leer fallas” para guardar una respuesta DTC de la API.'));logStore.events.slice(0,40).forEach(e=>{const li=logNode('li','',`${e.local} · ${e.message}`);events.appendChild(li)})}}
+function logPayload(){return{nota:'Las lecturas, el estado, el VIN y los DTC proceden de la API del ESP32. Las fechas son la hora local del teléfono. La API no proporciona odómetro, distancia ni consumo de combustible; no se calculan.',sessions:logStore.sessions,events:logStore.events}}
+function logDownload(filename,text,mime){const a=document.createElement('a'),u=URL.createObjectURL(new Blob([text],{type:mime}));a.href=u;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)}
+async function logShare(){const txt=JSON.stringify(logPayload(),null,2);if(navigator.share){try{await navigator.share({title:'Historial DCESP32-OBDC2',text:txt});return}catch(e){if(e&&e.name==='AbortError')return}}if(navigator.clipboard&&navigator.clipboard.writeText){try{await navigator.clipboard.writeText(txt);$('histStorage').textContent='Historial copiado al portapapeles.';return}catch(e){}}logDownload('DCESP32-historial.json',txt,'application/json');$('histStorage').textContent='Se descargó el archivo JSON del historial.'}
+function logCsv(){const head=['sesion_id','inicio_sesion_hora_local','muestra_hora_local','uptime_esp32_s','estado_bt','pid_s'].concat(LOG_PIDS);const rows=[head];logStore.sessions.slice().reverse().forEach(s=>(s.samples||[]).forEach(r=>rows.push([s.id,s.startLocal,r.local,r.up,r.bt,r.pps].concat(LOG_PIDS.map(id=>r.d[id])))));const csv='\ufeff'+rows.map(r=>r.map(v=>{const x=v==null?'':String(v);return'"'+x.replace(/"/g,'""')+'"'}).join(',')).join('\r\n');logDownload('DCESP32-muestras-API.csv',csv,'text/csv;charset=utf-8');$('histStorage').textContent='CSV exportado: muestras guardadas de /data.'}
+function logEnd(){if(logSession&&!logSession.closed){logSession.closed=true;logSession.endAt=Date.now();logSession.endLocal=logClock(logSession.endAt);logPersist()}}
+document.addEventListener('pagehide',logEnd);logInit();iniMic();aqUI();cargaU();alertas();init();
+</script></body></html>
+</script></body></html>)HTML";
+
+#ifdef SIMULATOR
+static const float simRango[NPIDS][2] = {
+  {800, 4500}, {0, 120}, {0, 80}, {15, 85}, {80, 102}, {30, 240}, {2, 40},
+  {20, 45}, {13.5, 14.5}, {-8, 8}, {-5, 5}, {20, 80}, {85, 105}
+};
+static void dcSim() {
+  static uint32_t t = 0;
+  if (millis() - t < 250) return;
+  t = millis();
+  float s = millis() / 1000.0f;
+  for (uint8_t i = 0; i < NPIDS; i++) {
+    float mid = (simRango[i][0] + simRango[i][1]) / 2, amp = (simRango[i][1] - simRango[i][0]) / 2;
+    DCPids[i].valor = mid + amp * sinf(s / (2.0f + i));
+    DCPids[i].valido = true; DCPids[i].soportado = true; DCPids[i].ts = millis();
+  }
+  dcBt = BT_LISTO; dcPps = 12;
+}
+#endif
+
+void setup() {
+  Serial.begin(115200);
+  dcCfgBegin();
+  WiFi.softAP(dcCfgSsid, dcCfgPass);
+  Serial.print("Web: http://"); Serial.println(WiFi.softAPIP());
+  server.on("/", []() { server.send_P(200, "text/html", PAGINA); });
+  server.on("/logo.webp", []() { server.sendHeader("Cache-Control", "max-age=86400"); server.send_P(200, "image/webp", (PGM_P)logo_web_data, logo_web_len); });
+  server.on("/portada.webp", []() { server.sendHeader("Cache-Control", "max-age=86400"); server.send_P(200, "image/webp", (PGM_P)portada_web_data, portada_web_len); });
+  server.on("/data", []() { server.send(200, "application/json", dcJson()); });
+  server.on("/status", []() { server.send(200, "application/json", dcStatusJson()); });
+  server.on("/cfg", []() { server.send(200, "application/json", dcCfgJson()); });
+  server.on("/dtc", HTTP_GET, []() { server.send(200, "application/json", dcDtcJson()); });
+  server.on("/dtc/leer", HTTP_POST, []() { dcDtcIniciar(); server.send(202, "application/json", "{\"aceptado\":true}"); });
+  server.on("/dtc/borrar", HTTP_POST, []() { String body=server.arg("plain"); if(!dcDtcBorrar(body)){server.send(400,"application/json","{\"error\":\"confirmacion requerida: confirmar=BORRAR\"}");return;} server.send(202,"application/json","{\"aceptado\":true}"); });
+  server.on("/vehiculo", HTTP_GET, []() { server.send(200, "application/json", dcVehiculoJson()); });
+  server.on("/vehiculo/leer", HTTP_POST, []() { dcVinIniciar(); server.send(202, "application/json", "{\"aceptado\":true}"); });
+  // --- Fase 14 (configuración) y Fase 9 (alertas) ---
+  server.on("/config", HTTP_GET, []() { server.send(200, "application/json", dcCfgEstadoJson()); });
+  server.on("/config", HTTP_POST, []() {
+    String e;
+    if (!dcCfgGuardar([](const String& k) { return server.arg(k); }, e)) { server.send(400, "text/plain", "Error: " + e); return; }
+    server.send(200, "text/plain", "Guardado. Si cambiaste WiFi o adaptador, reinicia el ESP32.");
+  });
+  server.on("/config/reset", HTTP_POST, []() {
+    if (server.arg("confirmar") != "RESTABLECER") { server.send(400, "text/plain", "Error: confirmacion requerida"); return; }
+    dcCfgReset();
+    server.send(200, "text/plain", "Valores de fabrica restaurados. Reinicia el ESP32.");
+  });
+  server.on("/reiniciar", HTTP_POST, []() { server.send(200, "text/plain", "Reiniciando..."); delay(300); ESP.restart(); });
+  server.on("/alertas", HTTP_GET, []() { server.send(200, "application/json", dcAlertJson()); });
+  server.begin();
+#ifndef SIMULATOR
+  dcObdBegin();
+#else
+  dcPref.begin("dcobd", false);
+  for (uint8_t i=0;i<4;i++) dcQ[i].estado=PQ_LIBRE;
+#endif
+  dcVinBegin();
+#ifdef SIMULATOR
+  dcEjecutarPruebasParsers();
+#endif
+}
+
+void loop() {
+  server.handleClient();
+#ifdef SIMULATOR
+  dcSim();
+  if (dcBt == BT_LISTO) { dcSiguientePuntual(); dcObdSimPuntuales(); }
+#else
+  dcObdLoop();
+#endif
+  dcDtcTick();
+  dcDtcTickBorrado();
+  dcVinTick();
+  dcAlertTick();
+}

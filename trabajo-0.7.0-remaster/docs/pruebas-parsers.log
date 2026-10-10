@@ -1,0 +1,13 @@
+OK    DTC sin conteo 43 01 33 00 00 00 00 -> [P0133 ]
+OK    DTC con conteo 43 01 01 33 -> [P0133 ]
+OK    DTC 2 codigos 43 02 01 33 03 00 -> [P0133 P0300 ]
+OK    DTC sin fallas 43 00 -> []
+OK    DTC 2 ECU -> [P0133 P0245 ]
+OK    DTC C/B/U -> [U0100 B0123 C0111 ]
+OK    DTC pendientes 47 -> [P0300 ]
+OK    DTC ISO-TP multitrama -> [P0133 P0134 P0135 P0136 ]
+OK    VIN CAN ELM real -> [WP0ZZZ99ZTS392001]
+OK    VIN CAN con PCI -> [WP0ZZZ99ZTS392001]
+OK    VIN no-CAN 5 lineas -> [WP0ZZZ99ZTS392001]
+OK    VIN basura -> []
+PRUEBAS PARSERS: fallos = 0

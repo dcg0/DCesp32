@@ -1,0 +1,27 @@
+OK    ECT 100 (>=99) 1 s: aun no se activa
+OK    ECT 100 mantenido 2.5 s: AVISO
+OK    ECT 105 (>=103.95): CRITICO
+OK    ECT 97.5: sigue activa por histeresis
+OK    ECT 95: se apaga
+OK    pico corto (<2 s) no activa
+OK    voltaje 11.0 con motor en marcha: alerta voltaje bajo
+OK    voltaje 14.2: se apaga
+OK    motor apagado (rpm 0): NO alerta de voltaje bajo
+OK    conexion perdida 4 s: aun no
+OK    conexion perdida >5 s: alerta CRITICA
+OK    conexion recuperada: se apaga
+OK    MIL encendida: alerta
+OK    JSON de alertas contiene mil
+OK    config valida se guarda
+OK    umbral invalido rechaza TODO (no guarda nada)
+OK    clave WiFi corta rechazada
+OK    SSID con comillas rechazado
+OK    unidad invalida rechazada
+OK    umbral fuera de rango rechazado
+OK    cambio de adaptador/wifi/unidades valido
+OK    al cambiar adaptador se olvida la MAC guardada
+OK    GET /config no devuelve la clave
+OK    tras reiniciar se recuperan valores guardados
+OK    restablecer vuelve a valores de fabrica
+
+fallos: 0

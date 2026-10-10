@@ -1,0 +1,46 @@
+name: Deploy DCESP32 page to GitHub Pages
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare minimal site artifact
+        run: |
+          mkdir -p _site/trabajo-0.7.0-remaster/imagenes _site/trabajo-0.7.0-remaster/docs
+          cp index.html README.md SECURITY.md _site/
+          cp trabajo-0.7.0-remaster/imagenes/logo_web.webp trabajo-0.7.0-remaster/imagenes/portada_web.webp _site/trabajo-0.7.0-remaster/imagenes/
+          cp trabajo-0.7.0-remaster/LEEME-DELL.md _site/trabajo-0.7.0-remaster/
+          cp trabajo-0.7.0-remaster/docs/README.md trabajo-0.7.0-remaster/docs/PRUEBAS.md trabajo-0.7.0-remaster/docs/PANEL-AUTO.md trabajo-0.7.0-remaster/docs/CHANGELOG.md _site/trabajo-0.7.0-remaster/docs/
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
