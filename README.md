@@ -52,6 +52,8 @@ Tras cargar el sketch en el ESP32 y enlazar el ELM327, conecta el teléfono a la
 
 El panel se sirve en la red local del ESP32; este proyecto no promete cifrado TLS, endurecimiento para exposición pública ni compatibilidad universal con vehículos. **No publiques el dispositivo en Internet, no uses las opciones de diagnóstico al conducir y no borres DTC sin evaluar el impacto.** Las pruebas del paquete no incluyen un ESP32, ELM327 ni automóvil conectados físicamente. Lee [`SECURITY.md`](SECURITY.md) para reportar vulnerabilidades.
 
+La demo alojada en GitHub Pages incluye CSP y política Referrer en el HTML. En la respuesta HTTPS observada, GitHub entregó HSTS, pero no CSP, Referrer-Policy, X-Content-Type-Options ni Permissions-Policy como cabeceras HTTP; el control estático comprueba solo las políticas declaradas en el documento. Las insignias de seguridad no son una certificación ni sustituyen una auditoría completa.
+
 El ZIP original señala que el proyecto base `ESP32-OBD2-Gauge` de VaAndCob tiene una condición “MIT No Commercial Use”, pero no incluye el texto íntegro de su licencia. Este repositorio no añade una licencia nueva a la obra derivada; verifica los avisos y permisos aplicables antes de redistribuirla o utilizarla comercialmente.
 
 ## Estructura
