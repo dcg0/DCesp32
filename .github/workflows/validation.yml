@@ -26,7 +26,7 @@ jobs:
       - name: Test DTC and VIN parsers
         run: bash trabajo-0.7.0-remaster/herramientas/test_parsers.sh
 
-      - name: Check embedded JavaScript syntax
+      - name: Check embedded firmware JavaScript syntax
         shell: bash
         run: |
           python3 - <<'PY'
@@ -34,6 +34,19 @@ jobs:
           source = Path('trabajo-0.7.0-remaster/ESP32-OBDC2/ESP32-OBDC2.ino').read_text(encoding='utf-8')
           page = source.split('R"HTML(', 1)[1].split(')HTML";', 1)[0]
           js = page.split('<script>', 1)[1].split('</script>', 1)[0]
-          Path('/tmp/dcesp32-page.js').write_text(js, encoding='utf-8')
+          Path('/tmp/dcesp32-firmware-page.js').write_text(js, encoding='utf-8')
           PY
-          node --check /tmp/dcesp32-page.js
+          node --check /tmp/dcesp32-firmware-page.js
+
+      - name: Check demo page JavaScript syntax
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          html = Path('index.html').read_text(encoding='utf-8')
+          if html.count('<script>') != 1:
+              raise SystemExit('Se esperaba un bloque JavaScript en index.html')
+          js = html.split('<script>', 1)[1].split('</script>', 1)[0]
+          Path('/tmp/dcesp32-demo.js').write_text(js, encoding='utf-8')
+          PY
+          node --check /tmp/dcesp32-demo.js
