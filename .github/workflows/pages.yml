@@ -34,7 +34,7 @@ jobs:
           cp trabajo-0.7.0-remaster/docs/README.md trabajo-0.7.0-remaster/docs/PRUEBAS.md trabajo-0.7.0-remaster/docs/PANEL-AUTO.md trabajo-0.7.0-remaster/docs/CHANGELOG.md _site/trabajo-0.7.0-remaster/docs/
 
       - name: Configure Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Upload site artifact
         uses: actions/upload-pages-artifact@v3
