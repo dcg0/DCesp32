@@ -1,11 +1,7 @@
 version: 2
 updates:
+  # Este repositorio no contiene un manifiesto de dependencias Python.
   - package-ecosystem: github-actions
-    directory: /
-    schedule:
-      interval: weekly
-
-  - package-ecosystem: pip
     directory: /
     schedule:
       interval: weekly

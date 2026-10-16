@@ -48,6 +48,8 @@ El modo `sim` compila el firmware como simulador; no prueba un automóvil real. 
 
 Tras cargar el sketch en el ESP32 y enlazar el ELM327, conecta el teléfono a la red Wi-Fi local **`DC-OBD`** y visita **`http://192.168.4.1`**. Al cambiar a esa red el teléfono puede perder temporalmente su conexión a Internet. Usa la interfaz únicamente con el vehículo estacionado.
 
+> **Credencial de fábrica:** el firmware conserva una contraseña de punto de acceso predeterminada y visible en el código fuente. Cámbiala desde **Ajustes** antes de usar el dispositivo y no reutilices esa contraseña en otra red.
+
 ## Seguridad y licencia
 
 El panel se sirve en la red local del ESP32; este proyecto no promete cifrado TLS, endurecimiento para exposición pública ni compatibilidad universal con vehículos. **No publiques el dispositivo en Internet, no uses las opciones de diagnóstico al conducir y no borres DTC sin evaluar el impacto.** Las pruebas del paquete no incluyen un ESP32, ELM327 ni automóvil conectados físicamente. Lee [`SECURITY.md`](SECURITY.md) para reportar vulnerabilidades.

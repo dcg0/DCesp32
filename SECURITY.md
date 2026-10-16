@@ -15,6 +15,8 @@ No se garantiza un plazo de respuesta. Las personas que reporten de buena fe deb
 
 ## Uso seguro conocido
 
+- La configuración inicial conserva una contraseña de punto de acceso predeterminada visible en el código fuente. Cámbiala desde **Ajustes** antes de conectar el equipo y no la reutilices en otra red.
+- El servidor HTTP local no implementa autenticación de usuarios ni protección CSRF; cualquier cliente que consiga entrar en el punto de acceso puede consultar datos y solicitar acciones de diagnóstico. Trátalo como una red de confianza y no lo expongas a Internet.
 - Mantén el ESP32 en una red local controlada; no reenvíes el puerto ni expongas el servidor a Internet.
 - Estaciona el vehículo antes de utilizar la interfaz.
 - No borres códigos DTC ni cambies configuraciones sin comprender sus consecuencias.
