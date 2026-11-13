@@ -48,7 +48,7 @@ El modo `sim` compila el firmware como simulador; no prueba un automóvil real. 
 
 Tras cargar el sketch en el ESP32 y enlazar el ELM327, conecta el teléfono a la red Wi-Fi local **`DC-OBD`** y visita **`http://192.168.4.1`**. Al cambiar a esa red el teléfono puede perder temporalmente su conexión a Internet. Usa la interfaz únicamente con el vehículo estacionado.
 
-> **Credencial de fábrica:** el firmware conserva una contraseña de punto de acceso predeterminada y visible en el código fuente. Cámbiala desde **Ajustes** antes de usar el dispositivo y no reutilices esa contraseña en otra red.
+> **Credencial inicial:** en el primer arranque el firmware genera una clave distinta a partir de la identidad del ESP32 y la muestra por el puerto serie. Cámbiala desde **Ajustes** antes de usar el dispositivo en una red habitual y no la reutilices en otra red.
 
 ## Seguridad y licencia
 

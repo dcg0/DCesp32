@@ -12,7 +12,7 @@
 static Preferences dcCfgPref;
 static char dcCfgAdaptador[24] = "OBDII";
 static char dcCfgSsid[33] = "DC-OBD";
-static char dcCfgPass[33] = "12345678";
+static char dcCfgPass[33] = "";
 static uint8_t dcCfgUV = 0, dcCfgUT = 0, dcCfgUP = 0;  // 0 = km/h, °C, kPa · 1 = mph, °F, psi
 static float dcCfgVoltBajo = 11.8f;                    // 0 = alerta de voltaje bajo desactivada
 static float dcCfgWarnDefecto[NPIDS];
@@ -48,13 +48,20 @@ static bool dcCfgClaveOk(const String& s) {
   return true;
 }
 
+// Genera una clave inicial distinta para cada ESP32; una clave guardada por el
+// usuario sigue teniendo prioridad. La clave se muestra solo por el puerto serie.
+static void dcCfgClaveInicial() {
+  uint64_t mac = ESP.getEfuseMac();
+  snprintf(dcCfgPass, sizeof(dcCfgPass), "DC%010llX", (unsigned long long)(mac & 0xFFFFFFFFFFULL));
+}
+
 static void dcCfgCargaDefectos() {
   for (uint8_t i = 0; i < NPIDS; i++) DCPids[i].warn = dcCfgWarnDefecto[i];
   dcCfgUV = dcCfgUT = dcCfgUP = 0;
   dcCfgVoltBajo = 11.8f;
   strcpy(dcCfgAdaptador, "OBDII");
   strcpy(dcCfgSsid, "DC-OBD");
-  strcpy(dcCfgPass, "12345678");
+  dcCfgClaveInicial();
 }
 
 void dcCfgBegin() {
@@ -74,7 +81,8 @@ void dcCfgBegin() {
   dcCfgVoltBajo = dcCfgPref.getFloat("vb", 11.8f);
   String ad = dcCfgPref.getString("ad", "OBDII");
   String ss = dcCfgPref.getString("ss", "DC-OBD");
-  String pw = dcCfgPref.getString("pw", "12345678");
+  dcCfgClaveInicial();
+  String pw = dcCfgPref.getString("pw", dcCfgPass);
   if (dcCfgTextoOk(ad, 23)) strcpy(dcCfgAdaptador, ad.c_str());
   if (dcCfgTextoOk(ss, 32)) strcpy(dcCfgSsid, ss.c_str());
   if (dcCfgClaveOk(pw)) strcpy(dcCfgPass, pw.c_str());

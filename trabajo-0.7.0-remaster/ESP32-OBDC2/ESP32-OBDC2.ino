@@ -246,6 +246,7 @@ void setup() {
   Serial.begin(115200);
   dcCfgBegin();
   WiFi.softAP(dcCfgSsid, dcCfgPass);
+  Serial.print("WiFi clave inicial/configurada: "); Serial.println(dcCfgPass);
   Serial.print("Web: http://"); Serial.println(WiFi.softAPIP());
   server.on("/", []() { server.send_P(200, "text/html", PAGINA); });
   server.on("/logo.webp", []() { server.sendHeader("Cache-Control", "max-age=86400"); server.send_P(200, "image/webp", (PGM_P)logo_web_data, logo_web_len); });
